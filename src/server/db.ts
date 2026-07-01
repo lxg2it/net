@@ -8,6 +8,7 @@ const DB_PATH = path.join(__dirname, '..', '..', 'data', 'net.db');
 
 let SQL: SqlJsStatic | null = null;
 let db: Database | null = null;
+let dbMtime = 0; // Track file modification time for external-change detection
 
 export async function initDb(): Promise<void> {
   if (db) return;
@@ -20,18 +21,33 @@ export async function initDb(): Promise<void> {
 
   // Load existing or create new
   if (fs.existsSync(DB_PATH)) {
+    dbMtime = fs.statSync(DB_PATH).mtimeMs;
     const buffer = fs.readFileSync(DB_PATH);
     db = new SQL.Database(buffer);
   } else {
     db = new SQL.Database();
+    dbMtime = Date.now();
   }
 
   db.run('PRAGMA foreign_keys = ON');
   initSchema();
 }
 
+function reloadIfStale(): void {
+  if (!SQL || !fs.existsSync(DB_PATH)) return;
+  const fileMtime = fs.statSync(DB_PATH).mtimeMs;
+  if (fileMtime > dbMtime) {
+    const buffer = fs.readFileSync(DB_PATH);
+    const newDb = new SQL.Database(buffer);
+    newDb.run('PRAGMA foreign_keys = ON');
+    db = newDb;
+    dbMtime = fileMtime;
+  }
+}
+
 function getDb(): Database {
   if (!db) throw new Error('Database not initialized. Call initDb() first.');
+  reloadIfStale();
   return db;
 }
 
@@ -40,6 +56,7 @@ function saveDb(): void {
   const data = db.export();
   const buffer = Buffer.from(data);
   fs.writeFileSync(DB_PATH, buffer);
+  dbMtime = fs.statSync(DB_PATH).mtimeMs; // Track our own writes
 }
 
 function initSchema(): void {
