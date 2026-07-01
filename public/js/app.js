@@ -4,7 +4,6 @@
 const API = '/api';
 let currentFilter = 'all';
 let currentSource = '';
-let hideRead = false;
 let fontSize = localStorage.getItem('net-font-size') || 'medium';
 let articles = [];
 
@@ -109,12 +108,6 @@ function setupFilters() {
 }
 
 function setupToolbar() {
-  // Hide read toggle
-  document.getElementById('toggleHideRead')?.addEventListener('change', (e) => {
-    hideRead = e.target.checked;
-    renderArticles();
-  });
-
   // Font size buttons
   document.querySelectorAll('.font-size-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -147,10 +140,6 @@ function updateFontSizeButtons() {
 // --- Rendering ---
 function filterArticles() {
   let filtered = articles;
-
-  if (hideRead) {
-    filtered = filtered.filter(a => a.state !== 'read');
-  }
 
   if (currentFilter === 'unread') {
     filtered = filtered.filter(a => a.state !== 'read');
