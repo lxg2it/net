@@ -1,0 +1,29 @@
+{
+  "name": "net",
+  "version": "0.1.0",
+  "description": "The Doom Scroll Antidote — scan the internet for what you care about, know what you've read",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server/index.js",
+    "dev": "ts-node src/server/index.ts",
+    "fetch": "ts-node src/server/fetch.ts"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "node-fetch": "^2.7.0",
+    "rss-parser": "^3.13.0",
+    "sql.js": "^1.14.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "@types/node-fetch": "^2.6.11",
+    "@types/sql.js": "^1.4.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.0"
+  }
+}

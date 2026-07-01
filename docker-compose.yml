@@ -1,0 +1,15 @@
+services:
+  net:
+    build: .
+    container_name: net
+    restart: unless-stopped
+    ports:
+      - "3006:3006"
+    volumes:
+      - net_data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3006
+
+volumes:
+  net_data:
