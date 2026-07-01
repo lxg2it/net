@@ -1,13 +1,18 @@
 // Net — Frontend App
+// The Doom Scroll Antidote
 
 const API = '/api';
 let currentFilter = 'all';
 let currentSource = '';
+let hideRead = false;
+let fontSize = localStorage.getItem('net-font-size') || 'medium';
 let articles = [];
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
+  applyFontSize(fontSize);
   setupFilters();
+  setupToolbar();
   setupRefresh();
   loadDashboard();
 });
@@ -75,7 +80,6 @@ function updateStats(data) {
 
 function populateSourceFilter(bySource) {
   const select = document.getElementById('sourceFilter');
-  // Keep the "All sources" option
   select.innerHTML = '<option value="">All sources</option>';
   if (bySource) {
     Object.keys(bySource).forEach(label => {
@@ -104,14 +108,49 @@ function setupFilters() {
   });
 }
 
+function setupToolbar() {
+  // Hide read toggle
+  document.getElementById('toggleHideRead')?.addEventListener('change', (e) => {
+    hideRead = e.target.checked;
+    renderArticles();
+  });
+
+  // Font size buttons
+  document.querySelectorAll('.font-size-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      fontSize = btn.dataset.size;
+      localStorage.setItem('net-font-size', fontSize);
+      applyFontSize(fontSize);
+      updateFontSizeButtons();
+    });
+  });
+  updateFontSizeButtons();
+}
+
 function setupRefresh() {
   document.getElementById('btnRefresh').addEventListener('click', loadDashboard);
   document.getElementById('btnFetch')?.addEventListener('click', triggerFetch);
 }
 
+// --- Font size ---
+function applyFontSize(size) {
+  const multipliers = { small: '0.85', medium: '1', large: '1.2' };
+  document.documentElement.style.setProperty('--font-mult', multipliers[size] || '1');
+}
+
+function updateFontSizeButtons() {
+  document.querySelectorAll('.font-size-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.size === fontSize);
+  });
+}
+
 // --- Rendering ---
 function filterArticles() {
   let filtered = articles;
+
+  if (hideRead) {
+    filtered = filtered.filter(a => a.state !== 'read');
+  }
 
   if (currentFilter === 'unread') {
     filtered = filtered.filter(a => a.state !== 'read');
@@ -151,29 +190,33 @@ function renderArticles() {
     const id = card.dataset.id;
     const state = card.dataset.state;
 
-    // Click to open + mark as read
+    // Card click: open + mark as read
     card.addEventListener('click', async (e) => {
-      // Don't trigger if clicking a button
-      if (e.target.tagName === 'BUTTON') return;
+      if (e.target.tagName === 'BUTTON' || e.target.tagName === 'LABEL') return;
       window.open(card.dataset.url, '_blank');
       if (state !== 'read') {
         await markRead([id]);
-        // Update locally
         const art = articles.find(a => a.id === id);
         if (art) { art.state = 'read'; art.read_at = new Date().toISOString(); }
         renderArticles();
       }
     });
 
-    // Mark unread button
+    // Read button: bidirectional toggle
     card.querySelector('.read-btn')?.addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (state === 'read') {
+      const art = articles.find(a => a.id === id);
+      if (!art) return;
+      if (art.state === 'read' || art.state === 'saved') {
         await markUnread([id]);
-        const art = articles.find(a => a.id === id);
-        if (art) { art.state = 'unread'; art.read_at = null; }
-        renderArticles();
+        art.state = 'unread';
+        art.read_at = null;
+      } else {
+        await markRead([id]);
+        art.state = 'read';
+        art.read_at = new Date().toISOString();
       }
+      renderArticles();
     });
 
     // Save button
@@ -190,9 +233,12 @@ function renderArticles() {
       }
       renderArticles();
     });
+
+    // Swipe to dismiss (mark as read on swipe-left)
+    setupSwipe(card, id);
   });
 
-  // Update stats after any local mutations
+  // Update stats
   updateStatsFromArticles();
 }
 
@@ -208,6 +254,16 @@ function renderArticle(a) {
     isSaved ? 'saved-article' : '',
   ].filter(Boolean).join(' ');
 
+  // Clear button labels
+  let readLabel;
+  if (isSaved) {
+    readLabel = '✓ Mark read';
+  } else if (isRead) {
+    readLabel = '↩ Mark unread';
+  } else {
+    readLabel = '✓ Mark read';
+  }
+
   return `
     <div class="${cardClass}" data-id="${a.id}" data-url="${a.url}" data-state="${a.state}">
       <div class="article-meta">
@@ -221,11 +277,58 @@ function renderArticle(a) {
       <div class="article-title">${h(a.title)}</div>
       ${a.snippet ? `<div class="article-snippet">${h(a.snippet)}</div>` : ''}
       <div class="article-actions">
-        <button class="read-btn">${isRead ? '↩ Mark unread' : '✓ Mark read'}</button>
+        <button class="read-btn">${readLabel}</button>
         <button class="save-btn">${isSaved ? '★ Saved' : '☆ Save'}</button>
       </div>
     </div>
   `;
+}
+
+// --- Swipe-to-dismiss ---
+function setupSwipe(card, articleId) {
+  let startX = 0;
+  let startY = 0;
+  let swiping = false;
+
+  card.addEventListener('touchstart', (e) => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    swiping = true;
+    card.style.transition = 'none';
+  }, { passive: true });
+
+  card.addEventListener('touchmove', (e) => {
+    if (!swiping) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    // Only intercept horizontal swipes
+    if (Math.abs(dx) > Math.abs(dy) && dx < 0) {
+      card.style.transform = `translateX(${dx}px)`;
+      card.style.opacity = Math.max(0, 1 + dx / 200);
+    }
+  }, { passive: true });
+
+  card.addEventListener('touchend', async (e) => {
+    if (!swiping) return;
+    swiping = false;
+    card.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
+    const dx = e.changedTouches[0].clientX - startX;
+    if (dx < -80) {
+      // Swiped left — dismiss (mark as read)
+      card.style.transform = 'translateX(-100%)';
+      card.style.opacity = '0';
+      const art = articles.find(a => a.id === articleId);
+      if (art && art.state !== 'read') {
+        await markRead([articleId]);
+        art.state = 'read';
+        art.read_at = new Date().toISOString();
+      }
+      setTimeout(() => renderArticles(), 250);
+    } else {
+      card.style.transform = '';
+      card.style.opacity = '';
+    }
+  });
 }
 
 // --- Helpers ---

@@ -1,5 +1,17 @@
 -- Net: Database schema for the doom-scroll antidote
 
+-- Users (multi-user ready)
+CREATE TABLE IF NOT EXISTS net_users (
+    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    username TEXT NOT NULL UNIQUE,
+    display_name TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Default user
+INSERT OR IGNORE INTO net_users (id, username, display_name) VALUES
+    ('default', 'scott', 'Scott');
+
 -- Content sources (RSS feeds, Reddit subs, HN)
 CREATE TABLE IF NOT EXISTS net_sources (
     id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
@@ -33,16 +45,27 @@ CREATE INDEX IF NOT EXISTS idx_net_articles_published ON net_articles(published_
 CREATE INDEX IF NOT EXISTS idx_net_articles_interest ON net_articles(interest_score DESC);
 CREATE INDEX IF NOT EXISTS idx_net_articles_source ON net_articles(source_id);
 
--- Read state for articles
+-- Read state for articles (per-user)
 CREATE TABLE IF NOT EXISTS net_read_state (
-    article_id TEXT PRIMARY KEY REFERENCES net_articles(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES net_users(id) ON DELETE CASCADE DEFAULT 'default',
+    article_id TEXT NOT NULL REFERENCES net_articles(id) ON DELETE CASCADE,
     state TEXT NOT NULL DEFAULT 'unread' CHECK (state IN ('unread', 'read', 'saved')),
     read_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, article_id)
 );
 
--- Interest keywords that Scott cares about
+-- User interest profiles (per-user keyword overrides)
+CREATE TABLE IF NOT EXISTS net_user_interests (
+    user_id TEXT NOT NULL REFERENCES net_users(id) ON DELETE CASCADE DEFAULT 'default',
+    interest_id TEXT NOT NULL REFERENCES net_interests(id) ON DELETE CASCADE,
+    weight_override REAL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    PRIMARY KEY (user_id, interest_id)
+);
+
+-- Interest keywords
 CREATE TABLE IF NOT EXISTS net_interests (
     id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
     keyword TEXT NOT NULL UNIQUE,

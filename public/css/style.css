@@ -14,6 +14,7 @@
   --read-bg: #0d1117;
   --read-text: #484f58;
   --saved-border: #d2991d;
+  --font-mult: 1;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -24,6 +25,7 @@ body {
   color: var(--text);
   line-height: 1.5;
   min-height: 100vh;
+  font-size: calc(1rem * var(--font-mult));
 }
 
 .app {
@@ -44,7 +46,7 @@ header {
 }
 
 header h1 {
-  font-size: 24px;
+  font-size: calc(24px * var(--font-mult));
   font-weight: 600;
   color: var(--text-bright);
   margin: 0;
@@ -53,7 +55,7 @@ header h1 {
 .header-stats {
   display: flex;
   gap: 12px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-mult));
   color: var(--text-dim);
 }
 
@@ -92,7 +94,7 @@ header h1 {
 .filters {
   display: flex;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   align-items: center;
 }
 
@@ -102,7 +104,7 @@ header h1 {
   color: var(--text-dim);
   padding: 6px 14px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-mult));
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -120,10 +122,63 @@ header h1 {
   color: var(--text);
   padding: 6px 10px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-mult));
   cursor: pointer;
 }
 .source-select:focus { border-color: var(--accent); outline: none; }
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  font-size: calc(12px * var(--font-mult));
+  color: var(--text-dim);
+}
+
+.hide-read-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text-dim);
+  font-size: calc(13px * var(--font-mult));
+}
+.hide-read-label:hover { color: var(--text); }
+.hide-read-label input[type="checkbox"] {
+  accent-color: var(--accent-dim);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.font-size-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.font-size-label {
+  margin-right: 4px;
+  font-weight: 500;
+}
+.font-size-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: calc(12px * var(--font-mult));
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.font-size-btn:hover { border-color: var(--text-dim); color: var(--text); }
+.font-size-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--text-bright);
+}
 
 /* Articles */
 .articles-list {
@@ -139,11 +194,15 @@ header h1 {
   background: var(--bg-card);
   padding: 14px 16px;
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background 0.1s, transform 0.2s ease, opacity 0.2s ease;
   border-left: 3px solid transparent;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  user-select: none;
+  -webkit-user-select: none;
+  position: relative;
+  overflow: hidden;
 }
 
 .article-card:hover { background: var(--bg-hover); }
@@ -164,7 +223,7 @@ header h1 {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-mult));
   color: var(--text-dim);
   flex-wrap: wrap;
 }
@@ -173,7 +232,7 @@ header h1 {
   display: inline-block;
   padding: 1px 6px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-mult));
   font-weight: 500;
   text-transform: uppercase;
 }
@@ -182,14 +241,8 @@ header h1 {
 .source-badge.reddit { background: #3a1a1a; color: var(--red); }
 .source-badge.hackernews { background: #3a2a1a; color: var(--orange); }
 
-.interest-badges {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
 .interest-badge {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-mult));
   padding: 1px 5px;
   border-radius: 3px;
   background: rgba(88, 166, 255, 0.1);
@@ -203,7 +256,7 @@ header h1 {
 
 /* Article title */
 .article-title {
-  font-size: 15px;
+  font-size: calc(15px * var(--font-mult));
   font-weight: 500;
   color: var(--text-bright);
   line-height: 1.4;
@@ -211,7 +264,7 @@ header h1 {
 
 /* Article snippet */
 .article-snippet {
-  font-size: 13px;
+  font-size: calc(13px * var(--font-mult));
   color: var(--text-dim);
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -232,7 +285,7 @@ header h1 {
   color: var(--text-dim);
   padding: 3px 10px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-mult));
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -241,8 +294,8 @@ header h1 {
 .article-actions button.save-btn:hover { border-color: var(--orange); color: var(--orange); }
 
 /* States */
-.loading { text-align: center; padding: 40px; color: var(--text-dim); }
-.empty { text-align: center; padding: 40px; color: var(--text-dim); }
+.loading { text-align: center; padding: 40px; color: var(--text-dim); font-size: calc(14px * var(--font-mult)); }
+.empty { text-align: center; padding: 40px; color: var(--text-dim); font-size: calc(14px * var(--font-mult)); }
 
 .btn-fetch {
   margin-top: 16px;
@@ -251,19 +304,39 @@ header h1 {
   color: var(--text-bright);
   padding: 10px 24px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: calc(14px * var(--font-mult));
   cursor: pointer;
   transition: all 0.15s;
 }
 .btn-fetch:hover { background: var(--accent); }
 .btn-fetch:active { transform: scale(0.97); }
 
+/* Swipe hint for mobile */
+@media (hover: none) and (pointer: coarse) {
+  .article-card::after {
+    content: '← swipe to dismiss';
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: var(--read-text);
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+  }
+  .article-card:not(.read):hover::after {
+    opacity: 0.4;
+  }
+}
+
 /* Responsive */
 @media (max-width: 600px) {
   .app { padding: 8px; }
   header { gap: 8px; }
   .article-card { padding: 10px 12px; }
-  .article-title { font-size: 14px; }
+  .article-title { font-size: calc(14px * var(--font-mult)); }
   .filters { flex-wrap: wrap; }
   .source-select { margin-left: 0; width: 100%; }
+  .toolbar { flex-wrap: wrap; gap: 8px; }
 }

@@ -5,10 +5,11 @@ import fs from 'fs';
 import type { NetSource, NetArticle, NetReadState, NetInterest } from '../types';
 
 const DB_PATH = path.join(__dirname, '..', '..', 'data', 'net.db');
+const DEFAULT_USER = 'default';
 
 let SQL: SqlJsStatic | null = null;
 let db: Database | null = null;
-let dbMtime = 0; // Track file modification time for external-change detection
+let dbMtime = 0;
 
 export async function initDb(): Promise<void> {
   if (db) return;
@@ -19,7 +20,6 @@ export async function initDb(): Promise<void> {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  // Load existing or create new
   if (fs.existsSync(DB_PATH)) {
     dbMtime = fs.statSync(DB_PATH).mtimeMs;
     const buffer = fs.readFileSync(DB_PATH);
@@ -31,6 +31,7 @@ export async function initDb(): Promise<void> {
 
   db.run('PRAGMA foreign_keys = ON');
   initSchema();
+  runMigrations();
 }
 
 function reloadIfStale(): void {
@@ -56,7 +57,7 @@ function saveDb(): void {
   const data = db.export();
   const buffer = Buffer.from(data);
   fs.writeFileSync(DB_PATH, buffer);
-  dbMtime = fs.statSync(DB_PATH).mtimeMs; // Track our own writes
+  dbMtime = fs.statSync(DB_PATH).mtimeMs;
 }
 
 function initSchema(): void {
@@ -66,6 +67,59 @@ function initSchema(): void {
     getDb().run(schema);
     saveDb();
   }
+}
+
+function runMigrations(): void {
+  const d = getDb();
+  let migrated = false;
+
+  // Migration 1: Add user_id column to net_read_state if not present
+  // (and drop the old single-column primary key to allow composite PK)
+  try {
+    d.run('SELECT user_id FROM net_read_state LIMIT 1');
+  } catch {
+    // Column doesn't exist — migrate
+    d.run('DROP TABLE IF EXISTS net_read_state_old');
+    d.run('ALTER TABLE net_read_state RENAME TO net_read_state_old');
+    d.run(`
+      CREATE TABLE net_read_state (
+        user_id TEXT NOT NULL DEFAULT 'default',
+        article_id TEXT NOT NULL REFERENCES net_articles(id) ON DELETE CASCADE,
+        state TEXT NOT NULL DEFAULT 'unread' CHECK (state IN ('unread', 'read', 'saved')),
+        read_at TIMESTAMP,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, article_id)
+      )
+    `);
+    // Copy existing rows, defaulting user_id
+    const oldState = d.exec('SELECT article_id, state, read_at, created_at, updated_at FROM net_read_state_old');
+    if (oldState.length > 0 && oldState[0].values) {
+      for (const row of oldState[0].values) {
+        const [article_id, state, read_at, created_at, updated_at] = row;
+        d.run(
+          `INSERT OR REPLACE INTO net_read_state (user_id, article_id, state, read_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          ['default', article_id, state, read_at, created_at, updated_at]
+        );
+      }
+    }
+    d.run('DROP TABLE IF EXISTS net_read_state_old');
+    migrated = true;
+  }
+
+  // Migration 2: Ensure default user exists
+  const userCheck = d.exec("SELECT 1 FROM net_users WHERE id = 'default'");
+  if (userCheck.length === 0 || !userCheck[0].values || userCheck[0].values.length === 0) {
+    try {
+      d.run("INSERT OR IGNORE INTO net_users (id, username, display_name) VALUES ('default', 'scott', 'Scott')");
+      migrated = true;
+    } catch {
+      // net_users table might not exist yet — schema.sql handles creation
+    }
+  }
+
+  if (migrated) saveDb();
 }
 
 // Helper: convert exec result columns+values arrays into objects
@@ -83,7 +137,6 @@ function rowsToObjects<T>(result: QueryExecResult | null): T[] {
 
 function execAndReturn<T>(sql: string, params?: any[]): T[] {
   const d = getDb();
-  // Bind params by replacing ? with values
   let query = sql;
   if (params && params.length > 0) {
     let idx = 0;
@@ -91,7 +144,6 @@ function execAndReturn<T>(sql: string, params?: any[]): T[] {
       const val = params[idx++];
       if (val === null || val === undefined) return 'NULL';
       if (typeof val === 'number') return String(val);
-      // String value: escape quotes
       return `'${String(val).replace(/'/g, "''")}'`;
     });
   }
@@ -126,7 +178,6 @@ export function getEnabledSources(): NetSource[] {
   const raw = execAndReturn<NetSource>(
     'SELECT * FROM net_sources WHERE enabled = 1 ORDER BY source_type, label'
   );
-  // Parse JSON config from SQLite text storage
   return raw.map(s => ({
     ...s,
     config: typeof s.config === 'string' ? JSON.parse(s.config) : s.config,
@@ -210,34 +261,39 @@ export function logDedup(articleId: string, duplicateOf: string, reason: string)
   );
 }
 
-// --- Read State ---
+// --- Read State (per-user, default user) ---
 
-export function ensureReadState(articleId: string): void {
-  // SQLite: INSERT OR IGNORE
+export function ensureReadState(articleId: string, userId: string = DEFAULT_USER): void {
   run(
-    "INSERT OR IGNORE INTO net_read_state (article_id, state, created_at, updated_at) VALUES (?, 'unread', datetime('now'), datetime('now'))",
-    [articleId]
+    "INSERT OR IGNORE INTO net_read_state (user_id, article_id, state, created_at, updated_at) VALUES (?, ?, 'unread', datetime('now'), datetime('now'))",
+    [userId, articleId]
   );
 }
 
-export function markRead(articleId: string): void {
+export function markRead(articleId: string, userId: string = DEFAULT_USER): void {
   run(
-    "INSERT OR REPLACE INTO net_read_state (article_id, state, read_at, updated_at, created_at) VALUES (?, 'read', datetime('now'), datetime('now'), COALESCE((SELECT created_at FROM net_read_state WHERE article_id = ?), datetime('now')))",
-    [articleId, articleId]
+    `INSERT OR REPLACE INTO net_read_state (user_id, article_id, state, read_at, updated_at, created_at)
+     VALUES (?, ?, 'read', datetime('now'), datetime('now'),
+     COALESCE((SELECT created_at FROM net_read_state WHERE user_id = ? AND article_id = ?), datetime('now')))`,
+    [userId, articleId, userId, articleId]
   );
 }
 
-export function markSaved(articleId: string): void {
+export function markSaved(articleId: string, userId: string = DEFAULT_USER): void {
   run(
-    "INSERT OR REPLACE INTO net_read_state (article_id, state, read_at, updated_at, created_at) VALUES (?, 'saved', NULL, datetime('now'), COALESCE((SELECT created_at FROM net_read_state WHERE article_id = ?), datetime('now')))",
-    [articleId, articleId]
+    `INSERT OR REPLACE INTO net_read_state (user_id, article_id, state, read_at, updated_at, created_at)
+     VALUES (?, ?, 'saved', NULL, datetime('now'),
+     COALESCE((SELECT created_at FROM net_read_state WHERE user_id = ? AND article_id = ?), datetime('now')))`,
+    [userId, articleId, userId, articleId]
   );
 }
 
-export function markUnread(articleId: string): void {
+export function markUnread(articleId: string, userId: string = DEFAULT_USER): void {
   run(
-    "INSERT OR REPLACE INTO net_read_state (article_id, state, read_at, updated_at, created_at) VALUES (?, 'unread', NULL, datetime('now'), COALESCE((SELECT created_at FROM net_read_state WHERE article_id = ?), datetime('now')))",
-    [articleId, articleId]
+    `INSERT OR REPLACE INTO net_read_state (user_id, article_id, state, read_at, updated_at, created_at)
+     VALUES (?, ?, 'unread', NULL, datetime('now'),
+     COALESCE((SELECT created_at FROM net_read_state WHERE user_id = ? AND article_id = ?), datetime('now')))`,
+    [userId, articleId, userId, articleId]
   );
 }
 
@@ -253,27 +309,28 @@ export function getAllInterests(): NetInterest[] {
 
 export function getDashboardArticles(
   limit: number = 50,
-  offset: number = 0
+  offset: number = 0,
+  userId: string = DEFAULT_USER
 ): Array<NetArticle & { state: string; read_at: string | null; source_label: string }> {
   return execAndReturn<NetArticle & { state: string; read_at: string | null; source_label: string }>(
     `SELECT a.*, COALESCE(rs.state, 'unread') as state, rs.read_at, s.label as source_label
      FROM net_articles a
-     LEFT JOIN net_read_state rs ON a.id = rs.article_id
+     LEFT JOIN net_read_state rs ON a.id = rs.article_id AND rs.user_id = '${userId}'
      JOIN net_sources s ON a.source_id = s.id
      ORDER BY a.published_at DESC
      LIMIT ${limit} OFFSET ${offset}`
   );
 }
 
-export function getArticleStats(): { total: number; unread: number; saved: number } {
+export function getArticleStats(userId: string = DEFAULT_USER): { total: number; unread: number; saved: number } {
   const totalRow = execOne<{ c: number }>('SELECT COUNT(*) as c FROM net_articles');
   const unreadRow = execOne<{ c: number }>(
     `SELECT COUNT(*) as c FROM net_articles a
-     LEFT JOIN net_read_state rs ON a.id = rs.article_id
+     LEFT JOIN net_read_state rs ON a.id = rs.article_id AND rs.user_id = '${userId}'
      WHERE rs.state IS NULL OR rs.state = 'unread'`
   );
   const savedRow = execOne<{ c: number }>(
-    "SELECT COUNT(*) as c FROM net_read_state WHERE state = 'saved'"
+    `SELECT COUNT(*) as c FROM net_read_state WHERE state = 'saved' AND user_id = '${userId}'`
   );
   return {
     total: totalRow?.c || 0,
