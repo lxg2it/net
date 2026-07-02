@@ -124,7 +124,29 @@ INSERT OR IGNORE INTO net_interests (keyword, weight, category) VALUES
     ('Melbourne startup', 0.5, 'local'),
     ('Masters AI', 0.5, 'personal'),
     ('consulting', 0.4, 'business'),
-    ('startup', 0.5, 'business');
+    ('startup', 0.5, 'business'),
+    ('politics', 0.8, 'politics'),
+    ('election', 0.8, 'politics'),
+    ('parliament', 0.7, 'politics'),
+    ('senate', 0.7, 'politics'),
+    ('congress', 0.6, 'politics'),
+    ('legislation', 0.6, 'politics'),
+    ('government', 0.6, 'politics'),
+    ('democracy', 0.5, 'politics'),
+    ('voting', 0.5, 'politics'),
+    ('Labor', 0.7, 'politics'),
+    ('Liberal Party', 0.7, 'politics'),
+    ('Greens', 0.6, 'politics'),
+    ('minister', 0.5, 'politics'),
+    ('prime minister', 0.7, 'politics'),
+    ('president', 0.6, 'politics'),
+    ('Trump', 0.5, 'politics'),
+    ('Dutton', 0.6, 'politics'),
+    ('Albanese', 0.6, 'politics'),
+    ('budget', 0.5, 'politics'),
+    ('tariff', 0.5, 'politics'),
+    ('trade war', 0.5, 'politics'),
+    ('policy', 0.4, 'politics');
 
 -- Insert initial sources
 INSERT OR IGNORE INTO net_sources (id, source_type, label, config) VALUES
@@ -134,12 +156,16 @@ INSERT OR IGNORE INTO net_sources (id, source_type, label, config) VALUES
     ('reddit-artificial', 'reddit', 'r/Artificial', '{"subreddit": "Artificial", "limit": 25}'),
     ('reddit-bitcoin', 'reddit', 'r/Bitcoin', '{"subreddit": "Bitcoin", "limit": 25}'),
     ('reddit-robotics', 'reddit', 'r/robotics', '{"subreddit": "robotics", "limit": 25}'),
+    ('reddit-politics', 'reddit', 'r/politics', '{"subreddit": "politics", "limit": 25}'),
+    ('reddit-auspol', 'reddit', 'r/AustralianPolitics', '{"subreddit": "AustralianPolitics", "limit": 25}'),
     ('rss-arxiv-csai', 'rss', 'arXiv CS.AI', '{"url": "http://export.arxiv.org/rss/cs.AI", "limit": 20}'),
     ('rss-arxiv-cscl', 'rss', 'arXiv CS.CL', '{"url": "http://export.arxiv.org/rss/cs.CL", "limit": 20}'),
     ('rss-arxiv-cslg', 'rss', 'arXiv CS.LG', '{"url": "http://export.arxiv.org/rss/cs.LG", "limit": 20}'),
     ('rss-arxiv-csro', 'rss', 'arXiv CS.RO', '{"url": "http://export.arxiv.org/rss/cs.RO", "limit": 20}'),
     ('rss-schneier', 'rss', 'Schneier on Security', '{"url": "https://www.schneier.com/feed/atom/", "limit": 10}'),
-    ('rss-simonw', 'rss', 'Simon Willison', '{"url": "https://simonwillison.net/atom/everything/", "limit": 10}');
+    ('rss-simonw', 'rss', 'Simon Willison', '{"url": "https://simonwillison.net/atom/everything/", "limit": 10}'),
+    ('rss-abc-politics', 'rss', 'ABC News Politics', '{"url": "https://www.abc.net.au/news/feed/51120/rss.xml", "limit": 15}'),
+    ('rss-guardian-au', 'rss', 'The Guardian Australia', '{"url": "https://www.theguardian.com/australia-news/rss", "limit": 15}');
 
 -- Article dedup log (for debugging)
 CREATE TABLE IF NOT EXISTS net_dedup_log (

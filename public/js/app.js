@@ -2,13 +2,16 @@
 // The Doom Scroll Antidote
 
 const API = '/api';
-let currentFilter = 'all';
-let currentSource = '';
+let currentFilter = localStorage.getItem('net-filter') || 'unread';
+let currentSource = localStorage.getItem('net-source') || '';
 let fontSize = localStorage.getItem('net-font-size') || 'medium';
 let articles = [];
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
+  // Persist defaults if not previously set
+  if (!localStorage.getItem('net-filter')) localStorage.setItem('net-filter', 'unread');
+  if (!localStorage.getItem('net-font-size')) localStorage.setItem('net-font-size', 'medium');
   applyFontSize(fontSize);
   setupFilters();
   setupToolbar();
@@ -92,17 +95,29 @@ function populateSourceFilter(bySource) {
 
 // --- Filters ---
 function setupFilters() {
+  // Set initial active button from saved preference
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  const activeBtn = document.querySelector(`.filter-btn[data-filter="${currentFilter}"]`);
+  if (activeBtn) activeBtn.classList.add('active');
+  
+  // Restore source filter
+  if (currentSource) {
+    document.getElementById('sourceFilter').value = currentSource;
+  }
+
   document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentFilter = btn.dataset.filter;
+      localStorage.setItem('net-filter', currentFilter);
       renderArticles();
     });
   });
 
   document.getElementById('sourceFilter').addEventListener('change', (e) => {
     currentSource = e.target.value;
+    localStorage.setItem('net-source', currentSource);
     renderArticles();
   });
 }

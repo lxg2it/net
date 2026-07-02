@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import { getDashboardArticles, getCountBySource, getArticleStats, markRead, markSaved, markUnread, initDb } from './db';
+import { getDashboardArticles, getCountBySource, getArticleStats, markRead, markSaved, markUnread, initDb, getUserByToken } from './db';
 import { runFetchAll } from '../fetchers/orchestrator';
 import type { DashboardData } from '../types';
 
@@ -11,10 +11,64 @@ const PORT = parseInt(process.env.PORT || '3006', 10);
 app.use(cors());
 app.use(express.json());
 
+// Auth middleware — extracts user from ?t= param or net_token cookie
+declare global {
+  namespace Express {
+    interface Request {
+      userId?: string;
+      username?: string;
+    }
+  }
+}
+
+function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction): void {
+  // Check query param first, then cookie
+  const token = (req.query.t as string) ||
+    (req.headers.cookie ? parseCookies(req.headers.cookie)['net_token'] : null);
+
+  if (token) {
+    const user = getUserByToken(token);
+    if (user) {
+      req.userId = user.id;
+      req.username = user.username;
+      // If authed via query param, set persistent cookie
+      if (req.query.t) {
+        res.cookie('net_token', token, {
+          maxAge: 365 * 24 * 60 * 60 * 1000,
+          httpOnly: true,
+          sameSite: 'lax',
+          secure: true,
+        });
+      }
+      return next();
+    }
+  }
+  // Fall back to default user
+  req.userId = 'default';
+  req.username = 'scott';
+  next();
+}
+
+function parseCookies(header: string): Record<string, string> {
+  const cookies: Record<string, string> = {};
+  header.split(';').forEach(c => {
+    const eq = c.indexOf('=');
+    if (eq > 0) cookies[c.substring(0, eq).trim()] = c.substring(eq + 1).trim();
+  });
+  return cookies;
+}
+
+app.use(authMiddleware);
+
 // Serve static files from public/
 app.use(express.static(path.join(__dirname, '..', '..', 'public')));
 
 // --- API Routes ---
+
+// GET /api/me — current user info
+app.get('/api/me', (req, res) => {
+  res.json({ user_id: req.userId, username: req.username });
+});
 
 // GET /api/dashboard — main dashboard data
 app.get('/api/dashboard', (req, res) => {
@@ -22,8 +76,8 @@ app.get('/api/dashboard', (req, res) => {
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = parseInt(req.query.offset as string) || 0;
 
-    const articles = getDashboardArticles(limit, offset);
-    const stats = getArticleStats();
+    const articles = getDashboardArticles(limit, offset, req.userId!);
+    const stats = getArticleStats(req.userId!);
     const bySource = getCountBySource();
 
     const data: DashboardData = {
@@ -71,7 +125,7 @@ app.get('/api/articles', (req, res) => {
 // GET /api/stats — quick stats
 app.get('/api/stats', (req, res) => {
   try {
-    const stats = getArticleStats();
+    const stats = getArticleStats(req.userId!);
     res.json(stats);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -86,7 +140,7 @@ app.post('/api/mark-read', (req, res) => {
       return res.status(400).json({ error: 'article_ids array required' });
     }
     for (const id of article_ids) {
-      markRead(id);
+      markRead(id, req.userId!);
     }
     res.json({ marked: article_ids.length });
   } catch (err: any) {
@@ -102,7 +156,7 @@ app.post('/api/mark-unread', (req, res) => {
       return res.status(400).json({ error: 'article_ids array required' });
     }
     for (const id of article_ids) {
-      markUnread(id);
+      markUnread(id, req.userId!);
     }
     res.json({ marked: article_ids.length });
   } catch (err: any) {
@@ -118,7 +172,7 @@ app.post('/api/save', (req, res) => {
       return res.status(400).json({ error: 'article_ids array required' });
     }
     for (const id of article_ids) {
-      markSaved(id);
+      markSaved(id, req.userId!);
     }
     res.json({ saved: article_ids.length });
   } catch (err: any) {

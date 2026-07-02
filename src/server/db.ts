@@ -7,6 +7,22 @@ import type { NetSource, NetArticle, NetReadState, NetInterest } from '../types'
 const DB_PATH = path.join(__dirname, '..', '..', 'data', 'net.db');
 const DEFAULT_USER = 'default';
 
+// --- Users ---
+
+export function getUserByToken(token: string): { id: string; username: string; display_name: string } | null {
+  return execOne(
+    'SELECT id, username, display_name FROM net_users WHERE token = ?',
+    [token]
+  ) as { id: string; username: string; display_name: string } | null;
+}
+
+export function getUserById(userId: string): { id: string; username: string; display_name: string } | null {
+  return execOne(
+    'SELECT id, username, display_name FROM net_users WHERE id = ?',
+    [userId]
+  ) as { id: string; username: string; display_name: string } | null;
+}
+
 let SQL: SqlJsStatic | null = null;
 let db: Database | null = null;
 let dbMtime = 0;
@@ -117,6 +133,16 @@ function runMigrations(): void {
     } catch {
       // net_users table might not exist yet — schema.sql handles creation
     }
+  }
+
+  // Migration 3: Add token column to net_users
+  try {
+    d.run('SELECT token FROM net_users LIMIT 1');
+  } catch {
+    d.run('ALTER TABLE net_users ADD COLUMN token TEXT');
+    d.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_net_users_token ON net_users(token)');
+    d.run("UPDATE net_users SET token = 'scott-net-7x9k2m' WHERE id = 'default'");
+    migrated = true;
   }
 
   if (migrated) saveDb();
