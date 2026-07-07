@@ -29,10 +29,8 @@ function nextUserAgent(): string {
  * Fetch Reddit posts using the built-in subreddit RSS feed.
  * No auth required — Reddit provides .rss for every subreddit.
  *
- * Feed format: https://www.reddit.com/r/{subreddit}/.rss
- *
- * Uses rotating User-Agents. Falls back to old.reddit.com if www gets rate-limited.
- * Retries once with backoff on 429 errors.
+ * Uses rotating User-Agents. Reddit rate-limits by IP, so some
+ * sources will fail each cycle — the next auto-fetch will retry them.
  */
 export async function fetchRedditSource(
   source: NetSource,
@@ -41,20 +39,18 @@ export async function fetchRedditSource(
   const subreddit = source.config.subreddit as string;
   const limit = (source.config.limit as number) || 25;
 
-  // Reddit aggressively rate-limits RSS by IP. Retry once with backoff on 429.
-  // Browser UAs sometimes help but the real constraint is IP-level rate limiting.
+  // Reddit aggressively rate-limits RSS by IP. Single attempt per cycle —
+  // if rate-limited, we'll catch it in the next auto-fetch cycle.
   const feedUrl = `https://www.reddit.com/r/${subreddit}/.rss?limit=${limit}`;
+  const ua = nextUserAgent();
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const ua = nextUserAgent();
+  try {
+    const parser = new RssParser({
+      timeout: 15000,
+      headers: { 'User-Agent': ua },
+    });
 
-    try {
-      const parser = new RssParser({
-        timeout: 15000,
-        headers: { 'User-Agent': ua },
-      });
-
-      const feed = await parser.parseURL(feedUrl);
+    const feed = await parser.parseURL(feedUrl);
 
       if (!feed.items || feed.items.length === 0) {
         return { found: 0, new: 0, duplicate: 0 };
@@ -102,20 +98,7 @@ export async function fetchRedditSource(
       }
 
       return { found: articles.length, new: newCount, duplicate: dupCount };
-    } catch (err: any) {
-      const msg = err.message || String(err);
-      const isRateLimited = msg.includes('429') || msg.includes('Too Many Requests');
-
-      if (isRateLimited && attempt === 0) {
-        // Rate limited — back off and retry once with a different UA
-        await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 2000));
-        continue;
-      }
-
-      // Non-rate-limit error or second attempt failed
-      return { found: 0, new: 0, duplicate: 0, error: msg };
-    }
+  } catch (err: any) {
+    return { found: 0, new: 0, duplicate: 0, error: err.message || String(err) };
   }
-
-  return { found: 0, new: 0, duplicate: 0, error: 'Rate limited after retries' };
 }
