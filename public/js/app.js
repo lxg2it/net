@@ -26,7 +26,6 @@ async function loadDashboard() {
     const res = await fetch(`${API}/dashboard?limit=100`);
     const data = await res.json();
     articles = data.articles;
-    updateStats(data);
     populateSourceFilter(data.by_source);
     renderArticles();
   } catch (err) {
@@ -174,6 +173,9 @@ function renderArticles() {
   const emptyEl = document.getElementById('empty');
   const filtered = filterArticles();
 
+  // Always update stats from the local array (not the API, which counts all DB rows)
+  updateStatsFromArticles();
+
   if (filtered.length === 0) {
     container.innerHTML = '';
     emptyEl.style.display = 'block';
@@ -241,9 +243,6 @@ function renderArticles() {
     // Swipe to dismiss (mark as read on swipe-left)
     setupSwipe(card, id);
   });
-
-  // Update stats
-  updateStatsFromArticles();
 }
 
 function renderArticle(a) {
