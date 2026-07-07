@@ -41,12 +41,11 @@ export async function fetchRedditSource(
   const subreddit = source.config.subreddit as string;
   const limit = (source.config.limit as number) || 25;
 
-  // Try www first, then old.reddit.com as fallback (different rate limit pool)
-  const baseUrls = ['https://www.reddit.com', 'https://old.reddit.com'];
+  // Reddit aggressively rate-limits RSS by IP. Retry once with backoff on 429.
+  // Browser UAs sometimes help but the real constraint is IP-level rate limiting.
+  const feedUrl = `https://www.reddit.com/r/${subreddit}/.rss?limit=${limit}`;
 
-  for (let attempt = 0; attempt < baseUrls.length + 1; attempt++) {
-    const baseUrl = baseUrls[Math.min(attempt, baseUrls.length - 1)];
-    const feedUrl = `${baseUrl}/r/${subreddit}/.rss?limit=${limit}`;
+  for (let attempt = 0; attempt < 2; attempt++) {
     const ua = nextUserAgent();
 
     try {
@@ -107,17 +106,16 @@ export async function fetchRedditSource(
       const msg = err.message || String(err);
       const isRateLimited = msg.includes('429') || msg.includes('Too Many Requests');
 
-      if (isRateLimited && attempt < baseUrls.length) {
-        // Rate limited — try next base URL with a backoff
-        const backoff = (attempt + 1) * 2000 + Math.random() * 1000;
-        await new Promise(resolve => setTimeout(resolve, backoff));
+      if (isRateLimited && attempt === 0) {
+        // Rate limited — back off and retry once with a different UA
+        await new Promise(resolve => setTimeout(resolve, 3000 + Math.random() * 2000));
         continue;
       }
 
-      // Last attempt failed, or non-rate-limit error
+      // Non-rate-limit error or second attempt failed
       return { found: 0, new: 0, duplicate: 0, error: msg };
     }
   }
 
-  return { found: 0, new: 0, duplicate: 0, error: 'All retry attempts exhausted' };
+  return { found: 0, new: 0, duplicate: 0, error: 'Rate limited after retries' };
 }

@@ -27,7 +27,7 @@ export async function runFetchAll(): Promise<FetchJob> {
       const prevType = prevSource?.source_type;
       const currType = source.source_type;
       if (prevType === currType) {
-        const delay = currType === 'reddit' ? 5000 + Math.random() * 3000 : 500;
+        const delay = currType === 'reddit' ? 12000 + Math.random() * 5000 : 500;
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
