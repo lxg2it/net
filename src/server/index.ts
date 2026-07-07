@@ -233,9 +233,26 @@ async function start() {
   await initDb();
   app.listen(PORT, () => {
     console.log(`🕸️  Net running on http://localhost:${PORT}`);
-    console.log(`[net] Auto-fetch every ${parseInt(process.env.FETCH_INTERVAL_MINUTES || '15', 10)} minutes`);
-    // First fetch after 60 seconds to let everything settle
-    setTimeout(() => scheduleNextFetch(), 60_000);
+    const intervalMin = parseInt(process.env.FETCH_INTERVAL_MINUTES || '15', 10);
+    console.log(`[net] Auto-fetch every ${intervalMin} minutes`);
+
+    // Run first fetch after 10 seconds, then schedule recurring
+    setTimeout(async () => {
+      if (!isFetching) {
+        isFetching = true;
+        try {
+          console.log('[net] Auto-fetch starting...');
+          const job = await runFetchAll();
+          const totalNew = job.results.reduce((sum, r) => sum + r.articles_new, 0);
+          console.log(`[net] Auto-fetch complete: ${totalNew} new articles`);
+        } catch (err: any) {
+          console.error('[net] Auto-fetch failed:', err.message);
+        } finally {
+          isFetching = false;
+          scheduleNextFetch();
+        }
+      }
+    }, 10_000);
   });
 }
 
