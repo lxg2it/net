@@ -198,10 +198,44 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '..', '..', 'public', 'index.html'));
 });
 
+// Auto-fetch scheduler — runs periodically to keep articles fresh
+// Default 15 minutes, configurable via FETCH_INTERVAL_MINUTES env var
+let fetchTimer: ReturnType<typeof setTimeout> | null = null;
+let isFetching = false;
+
+function scheduleNextFetch(): void {
+  const intervalMin = parseInt(process.env.FETCH_INTERVAL_MINUTES || '15', 10);
+  const intervalMs = intervalMin * 60 * 1000;
+
+  fetchTimer = setTimeout(async () => {
+    if (isFetching) {
+      console.log('[net] Skipping auto-fetch — previous run still in progress');
+      scheduleNextFetch();
+      return;
+    }
+
+    isFetching = true;
+    try {
+      console.log('[net] Auto-fetch starting...');
+      const job = await runFetchAll();
+      const totalNew = job.results.reduce((sum: number, r: any) => sum + r.articles_new, 0);
+      console.log(`[net] Auto-fetch complete: ${totalNew} new articles`);
+    } catch (err: any) {
+      console.error('[net] Auto-fetch failed:', err.message);
+    } finally {
+      isFetching = false;
+      scheduleNextFetch();
+    }
+  }, intervalMs);
+}
+
 async function start() {
   await initDb();
   app.listen(PORT, () => {
     console.log(`🕸️  Net running on http://localhost:${PORT}`);
+    console.log(`[net] Auto-fetch every ${parseInt(process.env.FETCH_INTERVAL_MINUTES || '15', 10)} minutes`);
+    // First fetch after 60 seconds to let everything settle
+    setTimeout(() => scheduleNextFetch(), 60_000);
   });
 }
 
