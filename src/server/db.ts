@@ -36,18 +36,31 @@ export async function initDb(): Promise<void> {
     fs.mkdirSync(dir, { recursive: true });
   }
 
+  let recoveryMode = false;
   if (fs.existsSync(DB_PATH)) {
-    dbMtime = fs.statSync(DB_PATH).mtimeMs;
     const buffer = fs.readFileSync(DB_PATH);
-    db = new SQL.Database(buffer);
+    try {
+      db = new SQL.Database(buffer);
+      // Verify the DB is functional before committing to it
+      db.exec('SELECT 1');
+    } catch (err: any) {
+      console.error(`[net] Database corrupted, creating fresh: ${DB_PATH}`, err.message);
+      // Backup the corrupt file for forensic analysis
+      const backupPath = DB_PATH + `.corrupt.${Date.now()}`;
+      fs.copyFileSync(DB_PATH, backupPath);
+      console.log(`[net] Corrupt DB backed up to ${backupPath}`);
+      db = new SQL.Database();
+      recoveryMode = true;
+    }
   } else {
     db = new SQL.Database();
-    dbMtime = Date.now();
   }
 
+  dbMtime = Date.now();
   db.run('PRAGMA foreign_keys = ON');
   initSchema();
   runMigrations();
+  if (recoveryMode) saveDb();
 }
 
 function reloadIfStale(): void {
@@ -55,10 +68,16 @@ function reloadIfStale(): void {
   const fileMtime = fs.statSync(DB_PATH).mtimeMs;
   if (fileMtime > dbMtime) {
     const buffer = fs.readFileSync(DB_PATH);
-    const newDb = new SQL.Database(buffer);
-    newDb.run('PRAGMA foreign_keys = ON');
-    db = newDb;
-    dbMtime = fileMtime;
+    try {
+      const newDb = new SQL.Database(buffer);
+      newDb.exec('SELECT 1'); // Verify before replacing in-memory DB
+      newDb.run('PRAGMA foreign_keys = ON');
+      db = newDb;
+      dbMtime = fileMtime;
+    } catch (err: any) {
+      console.error(`[net] Reload failed, keeping in-memory DB. Corrupt file reverted.`, err.message);
+      // Don't replace the working in-memory DB with a corrupt file
+    }
   }
 }
 

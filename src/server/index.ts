@@ -202,10 +202,14 @@ app.get('*', (req, res) => {
 // Default 15 minutes, configurable via FETCH_INTERVAL_MINUTES env var
 let fetchTimer: ReturnType<typeof setTimeout> | null = null;
 let isFetching = false;
+let consecutiveFailures = 0;
+const MAX_BACKOFF_MIN = 120; // max backoff: 2 hours
 
 function scheduleNextFetch(): void {
-  const intervalMin = parseInt(process.env.FETCH_INTERVAL_MINUTES || '15', 10);
-  const intervalMs = intervalMin * 60 * 1000;
+  const baseIntervalMin = parseInt(process.env.FETCH_INTERVAL_MINUTES || '15', 10);
+  // Exponential backoff: baseInterval * 2^failures, capped at MAX_BACKOFF_MIN
+  const backoff = Math.min(baseIntervalMin * Math.pow(2, consecutiveFailures), MAX_BACKOFF_MIN);
+  const intervalMs = backoff * 60 * 1000;
 
   fetchTimer = setTimeout(async () => {
     if (isFetching) {
@@ -220,8 +224,11 @@ function scheduleNextFetch(): void {
       const job = await runFetchAll();
       const totalNew = job.results.reduce((sum: number, r: any) => sum + r.articles_new, 0);
       console.log(`[net] Auto-fetch complete: ${totalNew} new articles`);
+      consecutiveFailures = 0; // Reset on success
     } catch (err: any) {
-      console.error('[net] Auto-fetch failed:', err.message);
+      consecutiveFailures++;
+      const nextBackoff = Math.min(baseIntervalMin * Math.pow(2, consecutiveFailures), MAX_BACKOFF_MIN);
+      console.error(`[net] Auto-fetch failed (${consecutiveFailures} consecutive): ${err.message}. Next attempt in ${nextBackoff}min`);
     } finally {
       isFetching = false;
       scheduleNextFetch();
