@@ -10,11 +10,43 @@ import { fetchRedditSource } from './reddit';
 import { fetchHackerNewsSource } from './hackernews';
 import type { FetchResult, FetchJob } from '../types';
 
+/**
+ * Reddit rate-limits by IP: roughly 1-3 requests per window before returning
+ * 429 for everything after. Fetching all subreddits consecutively guarantees
+ * most of them get 429'd. Instead, rotate through them — fetch a subset each
+ * cycle so every subreddit gets its own rate-limit budget.
+ *
+ * With REDDIT_PER_CYCLE=2 and 7 subreddits at a 20-min auto-fetch interval,
+ * each sub is refreshed roughly hourly — plenty for Reddit's post lifecycle
+ * (posts stay relevant for 12-24h). If a sub still gets 429'd, it simply
+ * waits for its next rotation slot.
+ */
+const REDDIT_PER_CYCLE = 2;
+let redditRotationOffset = 0;
+
 export async function runFetchAll(): Promise<FetchJob> {
   const startedAt = new Date().toISOString();
-  const sources = getEnabledSources();
+  const allSources = getEnabledSources();
   const interests = getAllInterests();
   const classifier = new InterestClassifier(interests);
+
+  // Rotate reddit sources: select REDDIT_PER_CYCLE subs, wrapping around
+  const redditSources = allSources.filter(s => s.source_type === 'reddit');
+  const selectedReddit = new Set<string>();
+  if (redditSources.length > 0) {
+    for (let i = 0; i < REDDIT_PER_CYCLE && i < redditSources.length; i++) {
+      const src = redditSources[(redditRotationOffset + i) % redditSources.length];
+      selectedReddit.add(src.id);
+    }
+    redditRotationOffset = (redditRotationOffset + REDDIT_PER_CYCLE) % redditSources.length;
+  }
+
+  // Fetch all non-reddit sources plus this cycle's reddit rotation slot
+  const sources = allSources.filter(s => s.source_type !== 'reddit' || selectedReddit.has(s.id));
+  const skippedReddit = allSources.filter(s => s.source_type === 'reddit' && !selectedReddit.has(s.id));
+  if (skippedReddit.length > 0) {
+    console.log(`[net] Skipping reddit sources (rotation): ${skippedReddit.map(s => s.label).join(', ')}`);
+  }
 
   const results: FetchResult[] = [];
 
@@ -27,7 +59,9 @@ export async function runFetchAll(): Promise<FetchJob> {
       const prevType = prevSource?.source_type;
       const currType = source.source_type;
       if (prevType === currType) {
-        const delay = currType === 'reddit' ? 12000 + Math.random() * 5000 : 500;
+        // Only 2 reddit fetches per cycle now, so we can afford a longer
+        // gap between them — better odds both land within Reddit's budget.
+        const delay = currType === 'reddit' ? 25000 + Math.random() * 10000 : 500;
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
