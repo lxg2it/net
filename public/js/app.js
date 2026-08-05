@@ -64,7 +64,8 @@ async function loadUsers() {
           <strong>${escapeHtml(u.display_name)}</strong>
           <span class="user-username">@${escapeHtml(u.username)}</span>
           ${u.token ? `<code class="user-token" title="Login URL">https://net.lxg2it.com/?t=${escapeHtml(u.token)}</code>
-            <button class="btn-copy" data-token="${escapeHtml(u.token)}">Copy link</button>` : ''}
+            <button class="btn-copy" data-token="${escapeHtml(u.token)}">Copy link</button>
+            ${u.username !== 'scott' ? `<button class="btn-rotate" data-id="${u.id}">Rotate</button>` : ''}` : ''}
         </div>
         ${u.username !== 'scott' ? `<button class="btn-delete" data-id="${u.id}">Delete</button>` : ''}
       </div>
@@ -78,6 +79,9 @@ async function loadUsers() {
     });
     listEl.querySelectorAll('.btn-delete').forEach(btn => {
       btn.addEventListener('click', () => deleteUser(btn.dataset.id));
+    });
+    listEl.querySelectorAll('.btn-rotate').forEach(btn => {
+      btn.addEventListener('click', () => rotateToken(btn.dataset.id));
     });
   } catch (err) {
     listEl.innerHTML = `<p class="error">Failed to load users: ${err.message}</p>`;
@@ -104,6 +108,21 @@ async function addUser(e) {
     await loadUsers();
   } catch (err) {
     alert('Failed to create user: ' + err.message);
+  }
+}
+
+async function rotateToken(id) {
+  if (!confirm('Rotate this user's token? Their old login link will stop working immediately.')) return;
+  try {
+    const res = await fetch(`${API}/admin/users/${id}/rotate-token`, { method: 'POST' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Failed to rotate token');
+      return;
+    }
+    await loadUsers();
+  } catch (err) {
+    alert('Failed to rotate token: ' + err.message);
   }
 }
 

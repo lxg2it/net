@@ -122,6 +122,21 @@ app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
   }
 });
 
+// POST /api/admin/users/:id/rotate-token — rotate a user's token (admin only)
+app.post('/api/admin/users/:id/rotate-token', requireAdmin, (req, res) => {
+  const { id } = req.params;
+  if (id === 'default') {
+    res.status(400).json({ error: 'Cannot rotate the default admin token via this endpoint (would lock out all existing logins)' });
+    return;
+  }
+  const user = rotateUserToken(id);
+  if (user) {
+    res.json({ user });
+  } else {
+    res.status(404).json({ error: 'User not found' });
+  }
+});
+
 // GET /api/dashboard — main dashboard data
 app.get('/api/dashboard', (req, res) => {
   try {

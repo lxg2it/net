@@ -443,3 +443,11 @@ function generateId(): string {
   ).join('');
   return hex;
 }
+
+export function rotateUserToken(userId: string): { id: string; username: string; token: string } | null {
+  const user = getUserById(userId);
+  if (!user) return null;
+  const token = generateToken();
+  run(`UPDATE net_users SET token = ? WHERE id = ?`, [token, userId]);
+  return { id: user.id, username: user.username, token };
+}
