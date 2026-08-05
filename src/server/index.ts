@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import { getDashboardArticles, getCountBySource, getArticleStats, markRead, markSaved, markUnread, initDb, getUserByToken, createUser, listUsers, deleteUser, getUserByUsername } from './db';
+import { getDashboardArticles, getCountBySource, getArticleStats, markRead, markSaved, markUnread, initDb, getUserByToken, createUser, listUsers, deleteUser, getUserByUsername, rotateUserToken } from './db';
 import { runFetchAll } from '../fetchers/orchestrator';
 import type { DashboardData } from '../types';
 
