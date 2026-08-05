@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import { getDashboardArticles, getCountBySource, getArticleStats, markRead, markSaved, markUnread, initDb, getUserByToken } from './db';
+import { getDashboardArticles, getCountBySource, getArticleStats, markRead, markSaved, markUnread, initDb, getUserByToken, createUser, listUsers, deleteUser, getUserByUsername } from './db';
 import { runFetchAll } from '../fetchers/orchestrator';
 import type { DashboardData } from '../types';
 
@@ -17,6 +17,7 @@ declare global {
     interface Request {
       userId?: string;
       username?: string;
+      authenticated?: boolean;
     }
   }
 }
@@ -31,6 +32,7 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
     if (user) {
       req.userId = user.id;
       req.username = user.username;
+      req.authenticated = true;
       // If authed via query param, set persistent cookie
       if (req.query.t) {
         res.cookie('net_token', token, {
@@ -46,6 +48,17 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
   // Fall back to default user
   req.userId = 'default';
   req.username = 'scott';
+  req.authenticated = false;
+  next();
+}
+
+// Admin middleware — requires a valid token for the 'scott' (default) user.
+// Prevents the unauthenticated fallback from gaining admin access.
+function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction): void {
+  if (!req.authenticated || req.username !== 'scott') {
+    res.status(403).json({ error: 'Admin access required' });
+    return;
+  }
   next();
 }
 
@@ -67,7 +80,46 @@ app.use(express.static(path.join(__dirname, '..', '..', 'public')));
 
 // GET /api/me — current user info
 app.get('/api/me', (req, res) => {
-  res.json({ user_id: req.userId, username: req.username });
+  res.json({ user_id: req.userId, username: req.username, is_admin: req.authenticated && req.username === 'scott' });
+});
+
+// --- Admin: user management ---
+
+// GET /api/admin/users — list all users (admin only)
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  res.json({ users: listUsers() });
+});
+
+// POST /api/admin/users — create a new user with a fresh token (admin only)
+app.post('/api/admin/users', requireAdmin, (req, res) => {
+  const { username, display_name } = req.body || {};
+  if (!username || typeof username !== 'string' || !/^[a-zA-Z0-9_-]{1,32}$/.test(username)) {
+    res.status(400).json({ error: 'Username must be 1-32 chars of a-z, A-Z, 0-9, _ or -' });
+    return;
+  }
+  if (getUserByUsername(username)) {
+    res.status(409).json({ error: 'Username already exists' });
+    return;
+  }
+  const displayName = typeof display_name === 'string' && display_name.trim()
+    ? display_name.trim().slice(0, 64)
+    : null;
+  const user = createUser(username, displayName);
+  res.json({ user });
+});
+
+// DELETE /api/admin/users/:id — remove a user and their read state (admin only)
+app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
+  const { id } = req.params;
+  if (id === 'default') {
+    res.status(400).json({ error: 'Cannot delete the default admin user' });
+    return;
+  }
+  if (deleteUser(id)) {
+    res.json({ ok: true });
+  } else {
+    res.status(404).json({ error: 'User not found' });
+  }
 });
 
 // GET /api/dashboard — main dashboard data

@@ -2,6 +2,7 @@ import initSqlJs from 'sql.js';
 import type { Database, SqlJsStatic, QueryExecResult } from 'sql.js';
 import path from 'path';
 import fs from 'fs';
+import { randomBytes } from 'crypto';
 import type { NetSource, NetArticle, NetReadState, NetInterest } from '../types';
 
 const DB_PATH = path.join(__dirname, '..', '..', 'data', 'net.db');
@@ -22,6 +23,41 @@ export function getUserById(userId: string): { id: string; username: string; dis
     [userId]
   ) as { id: string; username: string; display_name: string } | null;
 }
+
+export function createUser(username: string, displayName: string | null): { id: string; username: string; display_name: string; token: string } {
+  const id = generateId();
+  const token = generateToken();
+  run(
+    `INSERT INTO net_users (id, username, display_name, token) VALUES (?, ?, ?, ?)`,
+    [id, username, displayName || username, token]
+  );
+  return { id, username, display_name: displayName || username, token };
+}
+
+export function listUsers(): { id: string; username: string; display_name: string; token: string | null; created_at: string }[] {
+  return execAndReturn(
+    `SELECT id, username, display_name, token, created_at FROM net_users ORDER BY created_at ASC`
+  );
+}
+
+export function deleteUser(userId: string): boolean {
+  const user = getUserById(userId);
+  if (!user) return false;
+  // Clean up their read state too
+  run(`DELETE FROM net_read_state WHERE user_id = ?`, [userId]);
+  run(`DELETE FROM net_users WHERE id = ?`, [userId]);
+  return true;
+}
+
+export function getUserByUsername(username: string): { id: string; username: string } | null {
+  return execOne(`SELECT id, username FROM net_users WHERE username = ?`, [username]);
+}
+
+function generateToken(): string {
+  // 32 hex chars of crypto randomness — URL-safe, no ambiguity
+  return randomBytes(16).toString('hex');
+}
+
 
 let SQL: SqlJsStatic | null = null;
 let db: Database | null = null;

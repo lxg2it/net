@@ -16,8 +16,117 @@ document.addEventListener('DOMContentLoaded', () => {
   setupFilters();
   setupToolbar();
   setupRefresh();
+  setupAdmin();
   loadDashboard();
 });
+
+// --- Admin: user management ---
+function setupAdmin() {
+  fetch(`${API}/me`)
+    .then(res => res.json())
+    .then(me => {
+      if (me.is_admin) {
+        const btn = document.getElementById('btnAdmin');
+        btn.style.display = 'inline-block';
+        btn.addEventListener('click', openAdminModal);
+        document.getElementById('btnAdminClose').addEventListener('click', closeAdminModal);
+        document.getElementById('adminModal').addEventListener('click', (e) => {
+          if (e.target.id === 'adminModal') closeAdminModal();
+        });
+        document.getElementById('addUserForm').addEventListener('submit', addUser);
+      }
+    })
+    .catch(err => console.error('Failed to check admin status:', err));
+}
+
+function openAdminModal() {
+  document.getElementById('adminModal').style.display = 'flex';
+  loadUsers();
+}
+
+function closeAdminModal() {
+  document.getElementById('adminModal').style.display = 'none';
+}
+
+async function loadUsers() {
+  const listEl = document.getElementById('userList');
+  listEl.innerHTML = '<p class="hint">Loading…</p>';
+  try {
+    const res = await fetch(`${API}/admin/users`);
+    const data = await res.json();
+    if (!res.ok) {
+      listEl.innerHTML = `<p class="error">${data.error || 'Failed to load users'}</p>`;
+      return;
+    }
+    listEl.innerHTML = data.users.map(u => `
+      <div class="user-row">
+        <div class="user-info">
+          <strong>${escapeHtml(u.display_name)}</strong>
+          <span class="user-username">@${escapeHtml(u.username)}</span>
+          ${u.token ? `<code class="user-token" title="Login URL">https://net.lxg2it.com/?t=${escapeHtml(u.token)}</code>
+            <button class="btn-copy" data-token="${escapeHtml(u.token)}">Copy link</button>` : ''}
+        </div>
+        ${u.username !== 'scott' ? `<button class="btn-delete" data-id="${u.id}">Delete</button>` : ''}
+      </div>
+    `).join('');
+    listEl.querySelectorAll('.btn-copy').forEach(btn => {
+      btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(`https://net.lxg2it.com/?t=${btn.dataset.token}`);
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy link'; }, 1500);
+      });
+    });
+    listEl.querySelectorAll('.btn-delete').forEach(btn => {
+      btn.addEventListener('click', () => deleteUser(btn.dataset.id));
+    });
+  } catch (err) {
+    listEl.innerHTML = `<p class="error">Failed to load users: ${err.message}</p>`;
+  }
+}
+
+async function addUser(e) {
+  e.preventDefault();
+  const username = document.getElementById('newUsername').value.trim();
+  const displayName = document.getElementById('newDisplayName').value.trim();
+  try {
+    const res = await fetch(`${API}/admin/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, display_name: displayName }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Failed to create user');
+      return;
+    }
+    document.getElementById('newUsername').value = '';
+    document.getElementById('newDisplayName').value = '';
+    await loadUsers();
+  } catch (err) {
+    alert('Failed to create user: ' + err.message);
+  }
+}
+
+async function deleteUser(id) {
+  if (!confirm('Delete this user and their read state?')) return;
+  try {
+    const res = await fetch(`${API}/admin/users/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Failed to delete user');
+      return;
+    }
+    await loadUsers();
+  } catch (err) {
+    alert('Failed to delete user: ' + err.message);
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
 
 // --- API Calls ---
 async function loadDashboard() {
